@@ -1,0 +1,25 @@
+{
+  "short_name": "Borboleta",
+  "name": "Borboleta VPN Premium",
+  "icons": [
+    {
+      "src": "https://images.unsplash.com/photo-1513002749550-c59d786b8e6c?auto=format&fit=crop&q=80&w=192&h=192",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://images.unsplash.com/photo-1513002749550-c59d786b8e6c?auto=format&fit=crop&q=80&w=512&h=512",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#050508",
+  "display": "standalone",
+  "theme_color": "#00f2ff",
+  "description": "Premium Psiphon Tunneling for Unitel",
+  "orientation": "portrait",
+  "scope": "/"
+}
