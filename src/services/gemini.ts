@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-export async function generateButterflyImage(prompt: string = "A realistic blue Morpho butterfly with glowing neon edges, 8k resolution, cinematic lighting, dark background, professional photography style.") {
+export async function generateButterflyImage(prompt: string = "A majestic butterfly where the wings are made of realistic white fluffy clouds against a soft blue sky. The body of the butterfly is sleek and metallic. The cloud patterns are intricately part of the wing structure, with some areas showing clear sky and others dense cumulus clouds. High resolution, cinematic lighting, ethereal and premium feel, 8k.") {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || process.env.GEMINI_API_KEY || "" });
     const response = await ai.models.generateContent({

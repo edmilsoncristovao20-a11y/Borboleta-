@@ -11,12 +11,12 @@
   --color-bg: #050508;
   --color-accent: #00f2ff;
   --glass-surface: rgba(255, 255, 255, 0.03);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.08);
 }
 
 body {
   background-color: var(--color-bg);
-  color: #fff;
+  color: #ffffff;
   overflow: hidden;
 }
 
@@ -25,11 +25,11 @@ body {
   position: fixed;
   inset: 0;
   background: 
-    radial-gradient(circle at 50% 30%, #1a1a2e 0%, transparent 60%),
-    radial-gradient(circle at 10% 80%, #003366 0%, transparent 50%),
-    radial-gradient(circle at 90% 10%, #001122 0%, transparent 40%);
+    radial-gradient(circle at 50% 30%, #0a192f 0%, transparent 60%),
+    radial-gradient(circle at 10% 80%, #001233 0%, transparent 50%),
+    radial-gradient(circle at 90% 10%, #000814 0%, transparent 40%);
   filter: blur(80px);
-  opacity: 0.6;
+  opacity: 0.8;
   z-index: -1;
 }
 
