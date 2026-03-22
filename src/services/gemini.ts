@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-export async function generateButterflyImage(prompt: string = "A majestic butterfly where the wings are made of realistic white fluffy clouds against a soft blue sky. The body of the butterfly is sleek and metallic. The cloud patterns are intricately part of the wing structure, with some areas showing clear sky and others dense cumulus clouds. High resolution, cinematic lighting, ethereal and premium feel, 8k.") {
+export async function generateButterflyImage(prompt: string = "Ultra-high resolution, 8k, cinematic masterpiece. A majestic Morpho butterfly with translucent wings that shimmer with iridescent cyan and deep indigo. The wing veins are glowing with soft neon light. The butterfly is perched on a futuristic, dark crystalline structure. Soft bokeh background with floating light particles. Ethereal, premium, and futuristic aesthetic.") {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || process.env.GEMINI_API_KEY || "" });
     const response = await ai.models.generateContent({
@@ -25,10 +25,10 @@ export async function generateButterflyImage(prompt: string = "A majestic butter
         return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    return null;
-  } catch (error) {
+    throw new Error("No image data found in response");
+  } catch (error: any) {
     console.error("Error generating image:", error);
-    return null;
+    throw error;
   }
 }
 
