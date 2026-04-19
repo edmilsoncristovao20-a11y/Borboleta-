@@ -10,7 +10,7 @@ interface ButterflyProps {
 }
 
 export function Butterfly({ isConnecting, isConnected, isEstablishing, imageUrl, className }: ButterflyProps) {
-  const defaultImage = "https://images.unsplash.com/photo-1513002749550-c59d786b8e6c?auto=format&fit=crop&q=80&w=800&h=800";
+  const defaultImage = "https://lh3.googleusercontent.com/aida-public/AB6AXuDbMtm0FbqD6Cg9cyYmtR23-KYSKKJqb0HTWc1UROWt-YVlVfDnJkt0m07k5swpkbjs-stqBipRZdN6WUObKqrM59F3jzRZp3Mx3chX6P-QnvNYcyFPaBFSUxXvqnnv8FHmx18b7fl2AH1jAWCXdz9tCv_EaEG3NQ4jQFk1gmcE4eJa75wixukiDXVhnC3H65fXqeez2tEB9-QyIsbt-090H-P8Y2tUUZ-kPow2UFTtGPz-ZOdCL-x9R4NY2upxe3ZOGB7KlM16nA";
   const displayImage = imageUrl || defaultImage;
 
   return (

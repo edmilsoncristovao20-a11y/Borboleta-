@@ -198,9 +198,9 @@ async function startServer() {
   // API: Version Check
   app.get("/api/version", (req, res) => {
     res.json({ 
-      version: "4.2.1", 
-      changelog: "Estabilidade melhorada, novos servidores em Angola e otimização de bateria.",
-      date: "2024-03-10"
+      version: "8.0.0", 
+      changelog: "Borboleta Ultra V8: Terminal SSH integrado, Motor de ofuscação V8, SFTP Explorer e estabilidade extrema.",
+      date: "2026-04-19"
     });
   });
 
@@ -233,13 +233,14 @@ async function startServer() {
   wss.on("connection", (ws) => {
     console.log("[TunnelCore] Client connected via WebSocket");
     let sshClient: Client | null = null;
+    let shellStream: any = null;
 
     ws.on("message", async (message) => {
       try {
         const payload = JSON.parse(message.toString());
         
         if (payload.type === "SSH_CONNECT") {
-          const { host, port, username, password } = payload.config;
+          const { host, port, username, password, privateKey } = payload.config;
           sshClient = new Client();
           
           sshClient.on("ready", () => {
@@ -248,7 +249,46 @@ async function startServer() {
           }).on("error", (err) => {
             ws.send(JSON.stringify({ type: "ERROR", message: err.message }));
             console.error("[TunnelCore] SSH Error:", err.message);
-          }).connect({ host, port, username, password });
+          }).connect({ host, port, username, password, privateKey });
+        }
+
+        if (payload.type === "SSH_SHELL" && sshClient) {
+          sshClient.shell((err, stream) => {
+            if (err) return ws.send(JSON.stringify({ type: "ERROR", message: err.message }));
+            shellStream = stream;
+            
+            stream.on("data", (data: any) => {
+              ws.send(JSON.stringify({ type: "SSH_DATA", data: data.toString() }));
+            }).on("close", () => {
+              ws.send(JSON.stringify({ type: "SSH_CLOSE" }));
+              shellStream = null;
+            });
+          });
+        }
+
+        if (payload.type === "SSH_INPUT" && shellStream) {
+          shellStream.write(payload.data);
+        }
+
+        if (payload.type === "SSH_EXEC" && sshClient) {
+          sshClient.exec(payload.command, (err, stream) => {
+            if (err) return ws.send(JSON.stringify({ type: "ERROR", message: err.message }));
+            stream.on("data", (data: any) => {
+              ws.send(JSON.stringify({ type: "SSH_DATA", data: data.toString() }));
+            }).on("close", () => {
+              ws.send(JSON.stringify({ type: "SSH_EXEC_DONE" }));
+            });
+          });
+        }
+
+        if (payload.type === "SFTP_LIST" && sshClient) {
+          sshClient.sftp((err, sftp) => {
+            if (err) return ws.send(JSON.stringify({ type: "ERROR", message: err.message }));
+            sftp.readdir(payload.path || ".", (err, list) => {
+              if (err) return ws.send(JSON.stringify({ type: "ERROR", message: err.message }));
+              ws.send(JSON.stringify({ type: "SFTP_LIST_RESULT", list }));
+            });
+          });
         }
 
         if (payload.type === "PING") {
@@ -261,6 +301,7 @@ async function startServer() {
     });
 
     ws.on("close", () => {
+      if (shellStream) shellStream.end();
       if (sshClient) sshClient.end();
       console.log("[TunnelCore] Client disconnected");
     });

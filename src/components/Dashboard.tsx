@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Terminal, Shield, Activity, Settings as SettingsIcon, Wifi, Globe, Zap, Download, Upload, Sparkles, Loader2, Image as ImageIcon, Server, Lock, Cpu, Smartphone, Share2, RefreshCw, CheckCircle2, User as UserIcon, LogOut, LineChart as LineChartIcon } from "lucide-react";
+import { Terminal, Shield, Activity, Settings as SettingsIcon, Wifi, Globe, Zap, Download, Upload, Sparkles, Loader2, Image as ImageIcon, Server, Lock, Cpu, Smartphone, Share2, RefreshCw, CheckCircle2, User as UserIcon, LogOut, LineChart as LineChartIcon, Layers, FolderOpen, Send, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Butterfly } from "./Butterfly";
@@ -8,6 +8,7 @@ import { generateButterflyImage, generateAppIcon } from "../services/gemini";
 import { PsiphonEngine, ConnectionState, PsiphonConfig } from "../services/psiphonEngine";
 import { useAuth } from "../context/AuthContext";
 import { LoginModal } from "./LoginModal";
+import { SSHTerminal } from "./SSHTerminal";
 
 interface LogEntry {
   id: string;
@@ -19,10 +20,10 @@ interface LogEntry {
 export default function Dashboard() {
   const [engineState, setEngineState] = useState<ConnectionState>("DISCONNECTED");
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [activeTab, setActiveTab] = useState<"home" | "stats" | "logs" | "settings" | "charts">("home");
+  const [activeTab, setActiveTab] = useState<"home" | "stats" | "logs" | "settings" | "charts" | "ssh">("home");
   const [dataUsage, setDataUsage] = useState({ down: 0, up: 0 });
   const [connectionTime, setConnectionTime] = useState(0);
-  const [butterflyImage, setButterflyImage] = useState<string | null>("https://images.unsplash.com/photo-1551269901-5c5e14c25df7?auto=format&fit=crop&q=80&w=1000&h=1000");
+  const [butterflyImage, setButterflyImage] = useState<string | null>("https://lh3.googleusercontent.com/aida-public/AB6AXuDbMtm0FbqD6Cg9cyYmtR23-KYSKKJqb0HTWc1UROWt-YVlVfDnJkt0m07k5swpkbjs-stqBipRZdN6WUObKqrM59F3jzRZp3Mx3chX6P-QnvNYcyFPaBFSUxXvqnnv8FHmx18b7fl2AH1jAWCXdz9tCv_EaEG3NQ4jQFk1gmcE4eJa75wixukiDXVhnC3H65fXqeez2tEB9-QyIsbt-090H-P8Y2tUUZ-kPow2UFTtGPz-ZOdCL-x9R4NY2upxe3ZOGB7KlM16nA");
   const [appIcon, setAppIcon] = useState<string | null>("https://images.unsplash.com/photo-1513002749550-c59d786b8e6c?auto=format&fit=crop&q=80&w=512&h=512");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingIcon, setIsGeneratingIcon] = useState(false);
@@ -104,9 +105,11 @@ export default function Dashboard() {
       tunnelWholeDevice: true,
       disableTimeout: true,
       useVpnService: true,
+      useWireguard: false,
+      ipForwarding: true,
       upstreamProxy: "",
       // Authentic Psiphon Core Configs
-      clientVersion: 452,
+      clientVersion: 800,
       capabilities: ["COMPRESSED_RESOURCES", "LATEST_RESOURCES", "TRUSTED_RESOURCES", "QUIC", "KCP"],
       propagationChannelId: "Borboleta-VPN-Official",
       sponsorId: "Edmilson-Cristovao",
@@ -117,6 +120,43 @@ export default function Dashboard() {
   useEffect(() => {
     localStorage.setItem("borboleta_vpn_config", JSON.stringify(config));
   }, [config]);
+
+  const handleUpgradeToPremium = async () => {
+    if (!user) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    
+    try {
+      addLog("Requisitando upgrade para Premium...", "info");
+      const response = await fetch("/api/admin/upgrade-user", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "x-admin-key": "edmilson77-admin" // Using admin key for demo purpose
+        },
+        body: JSON.stringify({ username: user.username }),
+      });
+      
+      if (response.ok) {
+        addLog("Conta atualizada para Premium Pro!", "success");
+        // We'd ideally refresh the user context here, but for simulation 
+        // we'll just wait for the next login or refresh.
+        window.location.reload();
+      } else {
+        addLog("Erro ao processar upgrade.", "error");
+      }
+    } catch (error) {
+      addLog("Erro de conexão.", "error");
+    }
+  };
+
+  const handleShareConfig = () => {
+    const configString = btoa(JSON.stringify(config));
+    const shareLink = `apnalite://${configString}`;
+    navigator.clipboard.writeText(shareLink);
+    addLog("Configuração apnalite:// copiada para o clipboard!", "success");
+  };
 
   useEffect(() => {
     const autoGenerate = async () => {
@@ -162,21 +202,33 @@ export default function Dashboard() {
 
   const handleInstall = async () => {
     if (deferredPrompt) {
-      addLog("Iniciando instalação...", "info");
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        addLog("Instalação aceite pelo utilizador.", "success");
-      } else {
-        addLog("Instalação cancelada.", "warning");
+      try {
+        addLog("A abrir assistente de instalação...", "info");
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          addLog("Obrigado por instalar a Borboleta VPN!", "success");
+        } else {
+          addLog("Instalação ignorada.", "warning");
+        }
+        setDeferredPrompt(null);
+      } catch (err) {
+        addLog("Erro ao chamar instalador.", "error");
       }
-      setDeferredPrompt(null);
     } else {
-      // Check if already installed
-      if (window.matchMedia('(display-mode: standalone)').matches) {
-        alert("A Borboleta VPN já está instalada e a correr como aplicação!");
+      // Logic for devices that don't support beforeinstallprompt (iOS, custom browsers)
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+
+      if (isStandalone) {
+        alert("🎉 A Borboleta VPN já está instalada e a correr como App Nativa!");
+        addLog("Aplicação já instalada no sistema.", "info");
+      } else if (isIOS) {
+        alert("📲 Instalação no iPhone/iOS:\n\n1. Clique no botão 'Partilhar' (ícone de seta no fundo do Safari).\n2. Selecione 'Ecrã de Início'.\n3. Clique em 'Adicionar'.");
+        addLog("Instruções iOS enviadas ao utilizador.", "info");
       } else {
-        alert("Para instalar no ecrã principal:\n\nNo Android (Chrome): Clique nos 3 pontos e 'Instalar Aplicativo'.\n\nNo iPhone (Safari): Clique no ícone de 'Compartilhar' e selecione 'Adicionar ao Ecrã de Início'.");
+        alert("⚙️ Instalação Manual:\n\nChrome/Edge: Clique nos 3 pontos no canto superior e selecione 'Instalar Aplicativo'.\n\nFirefox: Clique nos 3 pontos e 'Adicionar ao Ecrã Inicial'.");
+        addLog("Instruções manuais enviadas.", "info");
       }
     }
   };
@@ -191,7 +243,7 @@ export default function Dashboard() {
       
       await new Promise(r => setTimeout(r, 2000)); // Simulate check
       
-      if (data.version !== "4.2.0") { // Current version is 4.2.0
+      if (data.version !== "8.0.0") { 
         setUpdateMessage(`Nova versão ${data.version} disponível!`);
         await new Promise(r => setTimeout(r, 2000));
         setUpdateMessage(`Instalando v${data.version}...`);
@@ -328,30 +380,21 @@ export default function Dashboard() {
     try {
       addLog("Descodificando configuração APNA Lite...", "info");
       
-      // Simulated decoding of the hex payload
-      // In a real app, we would hex-decode and decrypt
-      // For this implementation, we extract the intent (Unitel/Angola)
+      const base64 = importText.replace("apnalite://", "");
+      const decoded = JSON.parse(atob(base64));
       
-      const newConfig: Partial<PsiphonConfig> = {
-        region: "Angola - Unitel Optimized",
-        customHeaders: {
-          "Host": "internet.unitel.co.ao",
-          "X-Online-Host": "internet.unitel.co.ao",
-          "Connection": "Keep-Alive",
-          "Proxy-Connection": "Keep-Alive"
-        },
-        protocols: ["SSH", "OSSH", "QUIC"],
-        tunnelWholeDevice: true,
-        isPremium: true
+      const newConfig: PsiphonConfig = {
+        ...config,
+        ...decoded,
+        isPremium: true // All imported configs are treated as premium
       };
 
-      setConfig(prev => ({ ...prev, ...newConfig }));
+      setConfig(newConfig);
       addLog("Configuração importada com sucesso!", "success");
-      addLog("Payload de ofuscação injetado no túnel.", "info");
       setShowImportModal(false);
       setImportText("");
     } catch (error) {
-      addLog("Erro ao processar configuração.", "error");
+      addLog("Erro ao processar configuração base64.", "error");
     }
   };
 
@@ -507,48 +550,61 @@ export default function Dashboard() {
                     />
                   </div>
 
-                  <div className="text-center space-y-2">
-                    <h2 className="text-xl font-bold text-white/90 tracking-tight">
-                      {engineState === "CONNECTED" ? "Status: Conectado" : 
-                       engineState === "DISCONNECTED" ? "Status: Desconectado" : 
-                       "Status: Conectando..."}
-                    </h2>
+                  <div className="text-center space-y-3">
+                    <div className="flex flex-col items-center gap-1">
+                      <h2 className={cn(
+                        "text-3xl font-black tracking-tighter transition-all duration-500 uppercase italic",
+                        engineState === "CONNECTED" ? "text-emerald-400 drop-shadow-[0_0_20px_rgba(16,185,129,0.5)]" : 
+                        engineState === "DISCONNECTED" ? "text-white/20" : 
+                        "text-amber-400 animate-pulse"
+                      )}>
+                        {engineState === "CONNECTED" ? "PROTEGIDO" : 
+                         engineState === "DISCONNECTED" ? "OFFLINE" : 
+                         "LIGANDO..."}
+                      </h2>
+                      <div className="h-1.5 w-16 rounded-full overflow-hidden bg-white/5 mx-auto">
+                        <motion.div 
+                          className={cn(
+                            "h-full w-full shadow-[0_0_10px_currentColor]",
+                            engineState === "CONNECTED" ? "text-emerald-500 bg-emerald-500" :
+                            engineState === "DISCONNECTED" ? "text-white/5 bg-white/10" :
+                            "text-amber-500 bg-amber-500"
+                          )}
+                          animate={engineState !== "DISCONNECTED" && engineState !== "CONNECTED" ? { x: ["-100%", "100%"] } : { x: 0 }}
+                          transition={engineState !== "DISCONNECTED" && engineState !== "CONNECTED" ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.5 }}
+                        />
+                      </div>
+                    </div>
                     
                     {/* Visual Status Indicator Badge */}
                     <motion.div 
                       initial={{ opacity: 0, y: 5 }}
                       animate={{ opacity: 1, y: 0 }}
                       className={cn(
-                        "inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-widest",
+                        "inline-flex items-center gap-2 px-4 py-2 rounded-2xl border transition-all duration-500",
                         engineState === "CONNECTED" 
-                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.1)]" 
                           : engineState === "DISCONNECTED"
-                          ? "bg-rose-500/10 border-rose-500/20 text-rose-400"
+                          ? "bg-white/5 border-white/5 text-white/40"
                           : "bg-amber-500/10 border-amber-500/20 text-amber-400"
                       )}
                     >
-                      <div className="flex items-center gap-1 mr-1">
-                        {[1, 2, 3, 4].map((i) => (
-                          <div 
+                      <div className="flex items-center gap-1.5 mr-1">
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <motion.div 
                             key={i} 
+                            animate={engineState === "CONNECTED" ? {
+                              height: [i*2, i*3, i*2],
+                              opacity: [0.5, 1, 0.5]
+                            } : { height: i*2, opacity: 0.2 }}
+                            transition={{ duration: 0.5, delay: i * 0.1, repeat: Infinity }}
                             className={cn(
-                              "w-0.5 rounded-full transition-all duration-500",
-                              i === 1 ? "h-1" : i === 2 ? "h-1.5" : i === 3 ? "h-2" : "h-2.5",
-                              engineState === "CONNECTED" 
-                                ? "bg-emerald-500" 
-                                : engineState === "DISCONNECTED" 
-                                ? "bg-white/10" 
-                                : "bg-amber-500/50"
+                              "w-1 rounded-full bg-current"
                             )} 
                           />
                         ))}
                       </div>
-                      <div className={cn(
-                        "w-1.5 h-1.5 rounded-full",
-                        engineState === "CONNECTED" ? "bg-emerald-500 animate-pulse" : 
-                        engineState === "DISCONNECTED" ? "bg-rose-500" : "bg-amber-500 animate-spin"
-                      )} />
-                      {getStatusText()}
+                      <span className="text-[10px] font-bold uppercase tracking-[0.2em]">{getStatusText()}</span>
                     </motion.div>
 
                     <p className="text-[10px] uppercase tracking-[0.2em] text-cyan-400/60 font-bold">
@@ -635,6 +691,14 @@ export default function Dashboard() {
                     </button>
                     <div className="w-1 h-1 rounded-full bg-white/10" />
                     <button
+                      onClick={handleShareConfig}
+                      className="flex items-center gap-2 text-[9px] uppercase tracking-widest text-white/40 hover:text-cyan-400 transition-colors font-bold"
+                    >
+                      <Share2 className="w-3 h-3" />
+                      Partilhar Config
+                    </button>
+                    <div className="w-1 h-1 rounded-full bg-white/10" />
+                    <button
                       onClick={handleGenerateImage}
                       disabled={isGenerating}
                       className="flex items-center gap-2 text-[9px] uppercase tracking-widest text-white/40 hover:text-cyan-400 transition-colors font-bold"
@@ -694,14 +758,18 @@ export default function Dashboard() {
                     <span className="text-xs font-mono text-white">v{config.clientVersion}.0.0</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-white/60">Connection Time</span>
-                    <span className="text-xs font-mono text-white">{formatTime(connectionTime)}</span>
+                    <span className="text-xs text-white/60">Connection Stability</span>
+                    <span className="text-xs font-mono text-emerald-400">{currentLatency < 50 ? "Excellent" : currentLatency < 100 ? "Good" : "Fair"}</span>
                   </div>
                   <div className="h-1 bg-white/5 rounded-full overflow-hidden">
                     <motion.div 
-                      className="h-full bg-emerald-500" 
-                      animate={{ width: ["95%", "99%", "98%", "100%"] }}
-                      transition={{ duration: 2, repeat: Infinity }}
+                      className={cn(
+                        "h-full",
+                        currentLatency < 50 ? "bg-emerald-500" : currentLatency < 100 ? "bg-amber-500" : "bg-rose-500"
+                      )}
+                      initial={{ width: "0%" }}
+                      animate={{ width: `${Math.max(0, 100 - (currentLatency / 2))}%` }}
+                      transition={{ duration: 1 }}
                     />
                   </div>
                 </div>
@@ -916,7 +984,10 @@ export default function Dashboard() {
                     <span className="text-[10px] uppercase tracking-widest font-bold text-white/40">Tunnel Options</span>
                     <div className="space-y-2">
                       <label className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer">
-                        <span className="text-xs text-white/80">Tunnel Whole Device</span>
+                        <div className="flex flex-col">
+                          <span className="text-xs text-white/80">Tunnel Whole Device</span>
+                          <span className="text-[9px] text-white/30">Redirecionar todo o tráfego</span>
+                        </div>
                         <input 
                           type="checkbox" 
                           checked={config.tunnelWholeDevice}
@@ -925,7 +996,40 @@ export default function Dashboard() {
                         />
                       </label>
                       <label className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer">
-                        <span className="text-xs text-white/80">Use VPN Service</span>
+                        <div className="flex flex-col">
+                          <span className="text-xs text-white/80">Use Wireguard Proxy</span>
+                          <span className="text-[9px] text-cyan-400/60 flex items-center gap-1">
+                            <Shield className="w-2.5 h-2.5" />
+                            wg-quick up wg0
+                          </span>
+                        </div>
+                        <input 
+                          type="checkbox" 
+                          checked={(config as any).useWireguard}
+                          onChange={(e) => setConfig({...config, useWireguard: e.target.checked} as any)}
+                          className="w-4 h-4 accent-cyan-500"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer">
+                        <div className="flex flex-col">
+                          <span className="text-xs text-white/80">Kernel IP Forwarding</span>
+                          <span className="text-[9px] text-amber-400/60 flex items-center gap-1">
+                            <Terminal className="w-2.5 h-2.5" />
+                            sysctl.conf (IPv4 Forward)
+                          </span>
+                        </div>
+                        <input 
+                          type="checkbox" 
+                          checked={config.ipForwarding}
+                          onChange={(e) => setConfig({...config, ipForwarding: e.target.checked})}
+                          className="w-4 h-4 accent-cyan-500"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer">
+                        <div className="flex flex-col">
+                          <span className="text-xs text-white/80">Use VPN Service</span>
+                          <span className="text-[9px] text-white/30">Permitir Android VpnService</span>
+                        </div>
                         <input 
                           type="checkbox" 
                           checked={config.useVpnService}
@@ -1013,12 +1117,22 @@ export default function Dashboard() {
                           <p className="text-[10px] text-white/40">{isPremium ? "Subscrição Premium" : "Conta Gratuita"}</p>
                         </div>
                       </div>
-                      <button
-                        onClick={logout}
-                        className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
-                      >
-                        <LogOut className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {!isPremium && (
+                          <button
+                            onClick={handleUpgradeToPremium}
+                            className="px-3 py-1.5 rounded-lg bg-amber-500 text-black text-[10px] font-black uppercase tracking-tighter hover:shadow-[0_0_15px_rgba(245,158,11,0.4)] transition-all"
+                          >
+                            UPGRADE
+                          </button>
+                        )}
+                        <button
+                          onClick={logout}
+                          className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <button
@@ -1028,58 +1142,6 @@ export default function Dashboard() {
                       Entrar na Conta
                     </button>
                   )}
-                </div>
-
-                <div className="space-y-4 pt-4 border-t border-white/5">
-                  <h3 className="text-[10px] uppercase tracking-widest font-bold text-white/40">Serviço VPN</h3>
-                  <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-medium text-white/90">Túnel Todo o Dispositivo</p>
-                        <p className="text-[10px] text-white/30">Gere todo o tráfego de rede do telemóvel</p>
-                      </div>
-                      <div 
-                        onClick={() => {
-                          const newVal = !config.tunnelWholeDevice;
-                          setConfig({ ...config, tunnelWholeDevice: newVal });
-                          engine.updateConfig({ tunnelWholeDevice: newVal });
-                          addLog(`Modo de Túnel: ${newVal ? 'Todo o Dispositivo' : 'Apenas Browser'}`, "info");
-                        }}
-                        className={cn(
-                          "w-10 h-5 rounded-full transition-colors relative cursor-pointer",
-                          config.tunnelWholeDevice ? "bg-cyan-500" : "bg-white/10"
-                        )}
-                      >
-                        <motion.div 
-                          className="absolute top-1 left-1 w-3 h-3 rounded-full bg-white"
-                          animate={{ x: config.tunnelWholeDevice ? 20 : 0 }}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-medium text-white/90">Usar VpnService API</p>
-                        <p className="text-[10px] text-white/30">Ativa o perfil VPN nas definições do sistema</p>
-                      </div>
-                      <div 
-                        onClick={() => {
-                          const newVal = !config.useVpnService;
-                          setConfig({ ...config, useVpnService: newVal });
-                          engine.updateConfig({ useVpnService: newVal });
-                          addLog(`VpnService API: ${newVal ? 'Ativado' : 'Desativado'}`, "info");
-                        }}
-                        className={cn(
-                          "w-10 h-5 rounded-full transition-colors relative cursor-pointer",
-                          config.useVpnService ? "bg-cyan-500" : "bg-white/10"
-                        )}
-                      >
-                        <motion.div 
-                          className="absolute top-1 left-1 w-3 h-3 rounded-full bg-white"
-                          animate={{ x: config.useVpnService ? 20 : 0 }}
-                        />
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 <div className="space-y-4 pt-4 border-t border-white/5">
@@ -1164,6 +1226,42 @@ export default function Dashboard() {
                           {isAddingServer ? "Adicionando..." : "Adicionar Servidor Global"}
                         </button>
                       </div>
+
+                      <div className="pt-2 space-y-2">
+                        <p className="text-[10px] text-cyan-200/40 uppercase tracking-widest font-bold">Gerir Utilizadores</p>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text"
+                            placeholder="Username para Promoção"
+                            id="promote-user-input"
+                            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white focus:border-cyan-500/50 outline-none"
+                          />
+                          <button
+                            onClick={async () => {
+                              const input = document.getElementById('promote-user-input') as HTMLInputElement;
+                              if (!input.value) return;
+                              addLog(`Promovendo ${input.value} para Premium...`, "info");
+                              const response = await fetch("/api/admin/upgrade-user", {
+                                method: "POST",
+                                headers: { 
+                                  "Content-Type": "application/json",
+                                  "x-admin-key": "edmilson77-admin"
+                                },
+                                body: JSON.stringify({ username: input.value }),
+                              });
+                              if (response.ok) {
+                                addLog(`Utilizador ${input.value} agora é Premium Pro!`, "success");
+                                input.value = "";
+                              } else {
+                                addLog("Erro ao promover utilizador.", "error");
+                              }
+                            }}
+                            className="px-4 py-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-[10px] font-bold uppercase"
+                          >
+                            PROMOVER
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </motion.div>
                 )}
@@ -1189,15 +1287,101 @@ export default function Dashboard() {
                   <h3 className="text-[10px] uppercase tracking-widest font-bold text-white/40">Instalação</h3>
                   <button
                     onClick={handleInstall}
-                    className="w-full p-4 rounded-2xl bg-cyan-500 text-black flex items-center justify-center gap-3 font-bold hover:shadow-[0_0_20px_rgba(0,242,255,0.4)] transition-all"
+                    className={cn(
+                      "w-full p-4 rounded-2xl flex items-center justify-center gap-3 font-bold transition-all shadow-lg",
+                      deferredPrompt 
+                        ? "bg-cyan-500 text-black hover:shadow-[0_0_20px_rgba(0,242,255,0.4)]" 
+                        : "bg-white/5 border border-white/10 text-white/60 hover:bg-white/10"
+                    )}
                   >
-                    <Smartphone className="w-5 h-5" />
-                    <span>Instalar no Celular</span>
+                    <Smartphone className={cn("w-5 h-5", deferredPrompt && "animate-bounce")} />
+                    <span>{deferredPrompt ? "Instalar Agora" : "Como Instalar"}</span>
                   </button>
                   <p className="text-[10px] text-white/30 text-center leading-relaxed">
                     Transforme esta página numa aplicação nativa no seu celular usando a tecnologia PWA.
                   </p>
                 </div>
+              </motion.div>
+            )}
+            {activeTab === "charts" && (
+              <motion.div
+                key="charts"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="h-full space-y-4"
+              >
+                <div className="p-4 rounded-3xl bg-white/5 border border-white/10 h-[45%]">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[10px] uppercase tracking-widest font-bold text-white/40">Data Throughput (KB/s)</span>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
+                        <span className="text-[8px] text-white/40">DOWN</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span className="text-[8px] text-white/40">UP</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="h-[calc(100%-2rem)] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={history}>
+                        <defs>
+                          <linearGradient id="colorDown" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorUp" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                        <XAxis dataKey="time" hide />
+                        <YAxis hide domain={[0, 'auto']} />
+                        <Tooltip 
+                          contentStyle={{ background: '#12121a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '10px' }}
+                          itemStyle={{ padding: '0px' }}
+                        />
+                        <Area type="monotone" dataKey="down" stroke="#06b6d4" fillOpacity={1} fill="url(#colorDown)" strokeWidth={2} isAnimationActive={false} />
+                        <Area type="monotone" dataKey="up" stroke="#10b981" fillOpacity={1} fill="url(#colorUp)" strokeWidth={2} isAnimationActive={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-3xl bg-white/5 border border-white/10 h-[45%]">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[10px] uppercase tracking-widest font-bold text-white/40">Ping Latency (ms)</span>
+                    <span className="text-[10px] font-mono text-amber-400">{currentLatency}ms</span>
+                  </div>
+                  <div className="h-[calc(100%-2rem)] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={history}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                        <XAxis dataKey="time" hide />
+                        <YAxis hide domain={[0, 200]} />
+                        <Tooltip 
+                          contentStyle={{ background: '#12121a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '10px' }}
+                        />
+                        <Line type="stepAfter" dataKey="latency" stroke="#f59e0b" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+            {activeTab === "ssh" && (
+              <motion.div
+                key="ssh"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="h-full flex flex-col"
+              >
+                <SSHTerminal onAddLog={addLog} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -1207,8 +1391,10 @@ export default function Dashboard() {
         <div className="p-4 bg-white/5 border-t border-white/5 flex items-center justify-around">
           {[
             { id: "home", icon: Wifi, label: "Home" },
+            { id: "ssh", icon: Terminal, label: "SSH" },
             { id: "stats", icon: Activity, label: "Stats" },
-            { id: "logs", icon: Terminal, label: "Logs" },
+            { id: "charts", icon: LineChartIcon, label: "Gráficos" },
+            { id: "logs", icon: Layers, label: "Logs" },
             { id: "settings", icon: SettingsIcon, label: "Config" },
           ].map((item) => (
             <button
@@ -1274,7 +1460,7 @@ export default function Dashboard() {
 
       {/* Footer Info */}
       <div className="mt-8 text-center space-y-1 opacity-40">
-        <p className="text-[10px] uppercase tracking-[0.3em] font-light text-white">Powered by Borboleta Tunnel Core v4.2</p>
+        <p className="text-[10px] uppercase tracking-[0.3em] font-light text-white">Powered by Borboleta Tunnel Core v8.0 Ultra</p>
         <p className="text-[11px] font-bold tracking-widest text-cyan-400">CRIADO POR EDMILSON 77</p>
         <p className="text-[8px] uppercase tracking-[0.2em] text-white">© 2026 Borboleta VPN Labs • Angola</p>
       </div>

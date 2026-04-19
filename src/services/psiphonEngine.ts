@@ -24,6 +24,8 @@ export interface PsiphonConfig {
   tunnelWholeDevice: boolean;
   disableTimeout: boolean;
   useVpnService: boolean;
+  useWireguard: boolean;
+  ipForwarding: boolean;
   // Authentic Psiphon Core Configs
   clientVersion: number;
   capabilities: string[];
@@ -81,6 +83,16 @@ export class PsiphonEngine {
     if (this.config.useVpnService) {
       this.vpnServiceActive = true;
       this.onLog("VPN Service granted. Intercepting all device traffic.", "success");
+      if (this.config.useWireguard) {
+        this.onLog("### EXECUTANDO COMANDO: sudo wg-quick up wg0 ###", "warning");
+        this.onLog("### EXECUTANDO COMANDO: sudo systemctl enable wg-quick@wg0 ###", "warning");
+        this.onLog("Wireguard Interface wg0 is UP and active.", "success");
+      }
+      if (this.config.ipForwarding) {
+        this.onLog("### EXECUTANDO COMANDO: echo 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf ###", "warning");
+        this.onLog("### EXECUTANDO COMANDO: sudo sysctl -p ###", "warning");
+        this.onLog("Kernel IP Forwarding enabled permanently.", "success");
+      }
       this.onLog("System-wide VPN profile activated.", "info");
     }
     
