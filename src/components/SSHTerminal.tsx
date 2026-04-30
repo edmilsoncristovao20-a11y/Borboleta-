@@ -58,6 +58,28 @@ export function SSHTerminal({ onAddLog }: SSHTerminalProps) {
         setOutput(prev => [...prev, payload.data]);
       } else if (payload.type === "SFTP_LIST_RESULT") {
         setSftpFiles(payload.list);
+      } else if (payload.type === "SFTP_DOWNLOAD_RESULT") {
+        const { filename, data } = payload;
+        try {
+          const byteCharacters = atob(data);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray]);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          onAddLog(`Transferência concluída: ${filename}`, "success");
+        } catch (e) {
+          onAddLog("Erro ao processar download do arquivo.", "error");
+        }
       } else if (payload.type === "ERROR") {
         onAddLog(payload.message, "error");
         setIsConnecting(false);
@@ -85,6 +107,22 @@ export function SSHTerminal({ onAddLog }: SSHTerminalProps) {
     if (!wsRef.current) return;
     wsRef.current.send(JSON.stringify({ type: "SFTP_LIST", path }));
     setCurrentPath(path);
+  };
+
+  const handleSftpItemClick = (file: any) => {
+    const isDir = (file.attrs.mode & 0x4000) === 0x4000;
+    const fullPath = currentPath === "." ? file.filename : `${currentPath}/${file.filename}`;
+    
+    if (isDir) {
+      fetchSftpList(fullPath);
+    } else {
+      onAddLog(`A iniciar download de ${file.filename}...`, "info");
+      wsRef.current?.send(JSON.stringify({
+        type: "SFTP_DOWNLOAD",
+        path: fullPath,
+        filename: file.filename
+      }));
+    }
   };
 
   return (
@@ -223,24 +261,28 @@ export function SSHTerminal({ onAddLog }: SSHTerminalProps) {
                       <RefreshCw className="w-3 h-3 text-white/40 hover:text-white" />
                     </button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-2">
-                    <div className="space-y-1">
-                      {sftpFiles.map((file, i) => (
-                        <div 
-                          key={i} 
-                          className="p-2 rounded-xl hover:bg-white/5 flex items-center justify-between group cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            {file.attrs.isDirectory() ? <FolderOpen className="w-3 h-3 text-amber-400" /> : <ChevronRight className="w-3 h-3 text-white/20" />}
-                            <span className="text-[10px] text-white/80 truncate">{file.filename}</span>
+                          <div className="flex-1 overflow-y-auto p-2">
+                            <div className="space-y-1">
+                              {sftpFiles.map((file, i) => {
+                                const isDir = (file.attrs.mode & 0x4000) === 0x4000;
+                                return (
+                                  <div 
+                                    key={i} 
+                                    onClick={() => handleSftpItemClick(file)}
+                                    className="p-2 rounded-xl hover:bg-white/5 flex items-center justify-between group cursor-pointer"
+                                  >
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                      {isDir ? <FolderOpen className="w-3 h-3 text-amber-400" /> : <ChevronRight className="w-3 h-3 text-white/20" />}
+                                      <span className="text-[10px] text-white/80 truncate">{file.filename}</span>
+                                    </div>
+                                    {!isDir && (
+                                       <Download className="w-3 h-3 text-white/0 group-hover:text-cyan-400 transition-all" />
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                          {!file.attrs.isDirectory() && (
-                             <Download className="w-3 h-3 text-white/0 group-hover:text-cyan-400 transition-all" />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

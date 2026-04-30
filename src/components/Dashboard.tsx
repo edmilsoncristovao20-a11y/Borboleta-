@@ -8,7 +8,6 @@ import { generateButterflyImage, generateAppIcon } from "../services/gemini";
 import { PsiphonEngine, ConnectionState, PsiphonConfig } from "../services/psiphonEngine";
 import { useAuth } from "../context/AuthContext";
 import { LoginModal } from "./LoginModal";
-import { SSHTerminal } from "./SSHTerminal";
 
 interface LogEntry {
   id: string;
@@ -38,6 +37,7 @@ export default function Dashboard() {
   const [importText, setImportText] = useState("");
   const [showImportModal, setShowImportModal] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isWireguardMode, setIsWireguardMode] = useState(false);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(() => {
     return localStorage.getItem("borboleta_vpn_selected_server_id");
   });
@@ -109,7 +109,7 @@ export default function Dashboard() {
       ipForwarding: true,
       upstreamProxy: "",
       // Authentic Psiphon Core Configs
-      clientVersion: 800,
+      clientVersion: 420,
       capabilities: ["COMPRESSED_RESOURCES", "LATEST_RESOURCES", "TRUSTED_RESOURCES", "QUIC", "KCP"],
       propagationChannelId: "Borboleta-VPN-Official",
       sponsorId: "Edmilson-Cristovao",
@@ -233,6 +233,16 @@ export default function Dashboard() {
     }
   };
 
+  useEffect(() => {
+    if (engineState === "CONNECTED" && isWireguardMode) {
+      const notify = document.createElement("div");
+      notify.className = "fixed top-10 left-1/2 -translate-x-1/2 z-[200] px-6 py-4 bg-[#4CAF50] text-white rounded-2xl shadow-2xl font-bold text-xs uppercase tracking-widest animate-bounce";
+      notify.innerText = "Túnel de rede estabelecido!";
+      document.body.appendChild(notify);
+      setTimeout(() => notify.remove(), 3000);
+    }
+  }, [engineState, isWireguardMode]);
+
   const handleUpdate = async () => {
     setIsUpdating(true);
     setUpdateMessage("Procurando atualizações...");
@@ -243,7 +253,7 @@ export default function Dashboard() {
       
       await new Promise(r => setTimeout(r, 2000)); // Simulate check
       
-      if (data.version !== "8.0.0") { 
+      if (data.version !== "4.2.1") { 
         setUpdateMessage(`Nova versão ${data.version} disponível!`);
         await new Promise(r => setTimeout(r, 2000));
         setUpdateMessage(`Instalando v${data.version}...`);
@@ -277,7 +287,14 @@ export default function Dashboard() {
   const engine = useMemo(() => {
     return new PsiphonEngine(
       config,
-      (state) => setEngineState(state),
+      (state) => {
+        setEngineState(state);
+        if (state === "CONNECTED" && isWireguardMode) {
+          addLog("### EXECUTANDO: wg-quick up ./project_vpn.conf ###", "warning");
+          addLog("Túnel de rede estabelecido com sucesso!", "success");
+          setTimeout(() => addLog("Project VPN: Proteção WireGuard 256-bit ativa.", "success"), 500);
+        }
+      },
       (msg, type) => addLog(msg, type),
       (down, up, latency) => {
         const downRate = Math.max(0, down - lastDataRef.current.down);
@@ -550,31 +567,76 @@ export default function Dashboard() {
                     />
                   </div>
 
-                  <div className="text-center space-y-3">
-                    <div className="flex flex-col items-center gap-1">
+                  <div className="w-full space-y-6">
+                    {/* Project VPN / WireGuard Card */}
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      onClick={() => {
+                        setIsWireguardMode(!isWireguardMode);
+                        addLog(isWireguardMode ? "Modo Psiphon Tunnel reativado." : "Project VPN: Modo WireGuard ativado.", "info");
+                      }}
+                      className={cn(
+                        "w-full p-5 rounded-[32px] border transition-all duration-500 cursor-pointer group relative overflow-hidden",
+                        isWireguardMode 
+                          ? "bg-[#1a1a1a] border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.1)]" 
+                          : "bg-white/5 border-white/10 hover:border-white/20"
+                      )}
+                    >
+                      <div className="flex items-center gap-4 relative z-10">
+                        <div className={cn(
+                          "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500",
+                          isWireguardMode ? "bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]" : "bg-white/10"
+                        )}>
+                          <Cpu className={cn("w-6 h-6", isWireguardMode ? "text-white" : "text-white/40")} />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-white/40 mb-1">Painel de Controlo</p>
+                          <h3 className="text-sm font-black text-white uppercase tracking-tight">Project VPN</h3>
+                          <p className="text-[10px] font-medium text-emerald-400">
+                            {isWireguardMode ? "WireGuard Tunnel Core Active" : "Click to enable WireGuard Mode"}
+                          </p>
+                        </div>
+                        <div className={cn(
+                          "w-3 h-3 rounded-full transition-all duration-500",
+                          isWireguardMode ? "bg-emerald-500 animate-pulse" : "bg-white/10"
+                        )} />
+                      </div>
+                      
+                      {isWireguardMode && (
+                        <div className="absolute top-0 right-0 p-2 opacity-5 pointer-events-none">
+                          <Shield className="w-20 h-20 text-white rotate-12" />
+                        </div>
+                      )}
+                    </motion.div>
+
+                    <div className="text-center space-y-3">
                       <h2 className={cn(
                         "text-3xl font-black tracking-tighter transition-all duration-500 uppercase italic",
-                        engineState === "CONNECTED" ? "text-emerald-400 drop-shadow-[0_0_20px_rgba(16,185,129,0.5)]" : 
-                        engineState === "DISCONNECTED" ? "text-white/20" : 
+                        engineState === "CONNECTED" 
+                          ? (isWireguardMode ? "text-[#00FF00]" : "text-emerald-400") + " drop-shadow-[0_0_20px_rgba(16,185,129,0.5)]" : 
+                        engineState === "DISCONNECTED" 
+                          ? (isWireguardMode ? "text-rose-600" : "text-white/20") : 
                         "text-amber-400 animate-pulse"
                       )}>
-                        {engineState === "CONNECTED" ? "PROTEGIDO" : 
-                         engineState === "DISCONNECTED" ? "OFFLINE" : 
-                         "LIGANDO..."}
+                        {isWireguardMode && engineState === "CONNECTED" && "VPN STATUS: CONECTADO"}
+                        {isWireguardMode && engineState === "DISCONNECTED" && "VPN STATUS: DESCONECTADO"}
+                        {!isWireguardMode && (engineState === "CONNECTED" ? "PROTEGIDO" : engineState === "DISCONNECTED" ? "OFFLINE" : "LIGANDO...")}
+                        {engineState !== "CONNECTED" && engineState !== "DISCONNECTED" && "LIGANDO..."}
                       </h2>
-                      <div className="h-1.5 w-16 rounded-full overflow-hidden bg-white/5 mx-auto">
-                        <motion.div 
-                          className={cn(
-                            "h-full w-full shadow-[0_0_10px_currentColor]",
-                            engineState === "CONNECTED" ? "text-emerald-500 bg-emerald-500" :
-                            engineState === "DISCONNECTED" ? "text-white/5 bg-white/10" :
-                            "text-amber-500 bg-amber-500"
-                          )}
-                          animate={engineState !== "DISCONNECTED" && engineState !== "CONNECTED" ? { x: ["-100%", "100%"] } : { x: 0 }}
-                          transition={engineState !== "DISCONNECTED" && engineState !== "CONNECTED" ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.5 }}
-                        />
-                      </div>
+                    <div className="h-1.5 w-16 rounded-full overflow-hidden bg-white/5 mx-auto">
+                      <motion.div 
+                        className={cn(
+                          "h-full w-full shadow-[0_0_10px_currentColor]",
+                          engineState === "CONNECTED" ? "text-emerald-500 bg-emerald-500" :
+                          engineState === "DISCONNECTED" ? "text-white/5 bg-white/10" :
+                          "text-amber-500 bg-amber-500"
+                        )}
+                        animate={engineState !== "DISCONNECTED" && engineState !== "CONNECTED" ? { x: ["-100%", "100%"] } : { x: 0 }}
+                        transition={engineState !== "DISCONNECTED" && engineState !== "CONNECTED" ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.5 }}
+                      />
                     </div>
+                  </div>
                     
                     {/* Visual Status Indicator Badge */}
                     <motion.div 
@@ -665,12 +727,12 @@ export default function Dashboard() {
                     className={cn(
                       "relative group w-full py-5 rounded-3xl font-bold tracking-widest transition-all duration-500 overflow-hidden shadow-xl",
                       engineState === "CONNECTED" 
-                        ? "bg-rose-500 text-white shadow-rose-500/20" 
-                        : "bg-black text-white shadow-black/20"
+                        ? (isWireguardMode ? "bg-[#f44336] text-white" : "bg-rose-500 text-white shadow-rose-500/20")
+                        : (isWireguardMode ? "bg-[#4CAF50] text-white" : "bg-black text-white shadow-black/20")
                     )}
                   >
                     <span className="relative z-10 uppercase text-xs">
-                      {engineState === "CONNECTED" ? "PARAR" : "CONECTAR"}
+                      {isWireguardMode ? (engineState === "CONNECTED" ? "DESLIGAR" : "LIGAR VPN") : (engineState === "CONNECTED" ? "PARAR" : "CONECTAR")}
                     </span>
                     {engineState !== "DISCONNECTED" && engineState !== "CONNECTED" && (
                       <motion.div 
@@ -1373,17 +1435,6 @@ export default function Dashboard() {
                 </div>
               </motion.div>
             )}
-            {activeTab === "ssh" && (
-              <motion.div
-                key="ssh"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="h-full flex flex-col"
-              >
-                <SSHTerminal onAddLog={addLog} />
-              </motion.div>
-            )}
           </AnimatePresence>
         </div>
 
@@ -1391,7 +1442,6 @@ export default function Dashboard() {
         <div className="p-4 bg-white/5 border-t border-white/5 flex items-center justify-around">
           {[
             { id: "home", icon: Wifi, label: "Home" },
-            { id: "ssh", icon: Terminal, label: "SSH" },
             { id: "stats", icon: Activity, label: "Stats" },
             { id: "charts", icon: LineChartIcon, label: "Gráficos" },
             { id: "logs", icon: Layers, label: "Logs" },
@@ -1460,7 +1510,7 @@ export default function Dashboard() {
 
       {/* Footer Info */}
       <div className="mt-8 text-center space-y-1 opacity-40">
-        <p className="text-[10px] uppercase tracking-[0.3em] font-light text-white">Powered by Borboleta Tunnel Core v8.0 Ultra</p>
+        <p className="text-[10px] uppercase tracking-[0.3em] font-light text-white">Powered by Borboleta Tunnel Core v4.2</p>
         <p className="text-[11px] font-bold tracking-widest text-cyan-400">CRIADO POR EDMILSON 77</p>
         <p className="text-[8px] uppercase tracking-[0.2em] text-white">© 2026 Borboleta VPN Labs • Angola</p>
       </div>

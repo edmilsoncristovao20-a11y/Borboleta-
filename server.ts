@@ -198,9 +198,9 @@ async function startServer() {
   // API: Version Check
   app.get("/api/version", (req, res) => {
     res.json({ 
-      version: "8.0.0", 
-      changelog: "Borboleta Ultra V8: Terminal SSH integrado, Motor de ofuscação V8, SFTP Explorer e estabilidade extrema.",
-      date: "2026-04-19"
+      version: "4.2.1", 
+      changelog: "Estabilidade melhorada, novos servidores em Angola e otimização de bateria.",
+      date: "2024-03-10"
     });
   });
 
@@ -287,6 +287,25 @@ async function startServer() {
             sftp.readdir(payload.path || ".", (err, list) => {
               if (err) return ws.send(JSON.stringify({ type: "ERROR", message: err.message }));
               ws.send(JSON.stringify({ type: "SFTP_LIST_RESULT", list }));
+            });
+          });
+        }
+
+        if (payload.type === "SFTP_DOWNLOAD" && sshClient) {
+          const filePath = payload.path;
+          const fileName = payload.filename;
+          
+          sshClient.sftp((err, sftp) => {
+            if (err) return ws.send(JSON.stringify({ type: "ERROR", message: err.message }));
+            
+            sftp.readFile(filePath, (err, data) => {
+              if (err) return ws.send(JSON.stringify({ type: "ERROR", message: `Erro ao ler arquivo: ${err.message}` }));
+              
+              ws.send(JSON.stringify({ 
+                type: "SFTP_DOWNLOAD_RESULT", 
+                filename: fileName,
+                data: data.toString('base64')
+              }));
             });
           });
         }
