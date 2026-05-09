@@ -1970,28 +1970,46 @@ export default function Dashboard() {
         </AnimatePresence>
 
         {/* Navigation */}
-        <div className="p-4 bg-white/5 border-t border-white/5 flex items-center justify-around">
-          {[
-            { id: "home", icon: Wifi, label: "Início" },
-            { id: "ssh", icon: Terminal, label: "SSH" },
-            { id: "stats", icon: Activity, label: "Status" },
-            { id: "charts", icon: LineChartIcon, label: "Gráficos" },
-            { id: "logs", icon: Layers, label: "Logs" },
-            { id: "settings", icon: SettingsIcon, label: "Config" },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id as any)}
-              className={cn(
-                "flex flex-col items-center gap-1 transition-all duration-300",
-                activeTab === item.id ? "text-cyan-400 scale-110" : "text-white/30 hover:text-white/60"
-              )}
-            >
-              <item.icon className="w-5 h-5" />
-              <span className="text-[8px] uppercase tracking-tighter font-bold">{item.label}</span>
-            </button>
-          ))}
-        </div>
+        <footer className="app-footer">
+          <nav className="footer-nav">
+            {[
+              { id: "home", icon: Wifi, label: "INÍCIO", img: "https://lh3.googleusercontent.com/aida-public/AB6AXuDbMtm0FbqD6Cg9cyYmtR23-KYSKKJqb0HTWc1UROWt-YVlVfDnJkt0m07k5swpkbjs-stqBipRZdN6WUObKqrM59F3jzRZp3Mx3chX6P-QnvNYcyFPaBFSUxXvqnnv8FHmx18b7fl2AH1jAWCXdz9tCv_EaEG3NQ4jQFk1gmcE4eJa75wixukiDXVhnC3H65fXqeez2tEB9-QyIsbt-090H-P8Y2tUUZ-kPow2UFTtGPz-ZOdCL-x9R4NY2upxe3ZOGB7KlM16nA" },
+              { id: "ssh", icon: Terminal, label: "SSH" },
+              { id: "stats", icon: Activity, label: "STATUS" },
+              { id: "charts", icon: LineChartIcon, label: "GRÁFICOS" },
+              { id: "logs", icon: Layers, label: "LOGS" },
+              { id: "settings", icon: SettingsIcon, label: "CONFIG" },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  if (item.id === "home") {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                  console.log("Navegando para: " + item.label);
+                  setActiveTab(item.id as any);
+                }}
+                className={cn(
+                  "nav-item",
+                  activeTab === item.id && "active"
+                )}
+              >
+                <div className="icon-container">
+                  {item.id === "home" && item.img ? (
+                    <img 
+                      src={item.img} 
+                      alt={item.label}
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <item.icon className="w-5 h-5 transition-colors duration-300" />
+                  )}
+                </div>
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        </footer>
       </motion.div>
 
       {/* Import Modal */}
