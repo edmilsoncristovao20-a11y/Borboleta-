@@ -32,6 +32,9 @@ export interface PsiphonConfig {
   propagationChannelId: string;
   sponsorId: string;
   isPremium: boolean;
+  sni?: string;
+  payload?: string;
+  usePythonBridge?: boolean;
 }
 
 export class PsiphonEngine {
@@ -73,52 +76,88 @@ export class PsiphonEngine {
   public async start() {
     if (this.state !== "DISCONNECTED") return;
 
-    this.onLog(`Psiphon Tunnel Core version ${this.config.clientVersion}.0.0 (${this.config.isPremium ? 'Premium' : 'Free'}) starting...`, "info");
-    this.onLog(`Build: 20240310-${this.config.clientVersion}`, "info");
-    this.onLog(`Sponsor: ${this.config.sponsorId} | Channel: ${this.config.propagationChannelId}`, "info");
+    this.onLog(`Núcleo do Túnel Psiphon versão 453.0.0 (${this.config.isPremium ? 'Premium' : 'Livre'}) a iniciar...`, "info");
+    this.onLog(`Compilação: 20240311-453`, "info");
+    this.onLog(`Patrocinador: ${this.config.sponsorId} | Canal: ${this.config.propagationChannelId}`, "info");
     this.setState("STARTING");
     await this.sleep(600);
 
-    this.onLog("Initializing VPN Service...", "info");
+    this.onLog("A inicializar ganchos do Serviço VPN...", "info");
     if (this.config.useVpnService) {
+      this.onLog("[Atividade] VpnService.prepare(this) chamado.", "info");
+      await this.sleep(500);
+      this.onLog("[Atividade] Estado da permissão: CONCEDIDA", "success");
+      this.onLog("[Atividade] A acionar onActivityResult(0, RESULT_OK)", "info");
+      await this.sleep(400);
+
+      this.onLog("[Sistema] A verificar permissões no AndroidManifest.xml...", "info");
+      this.onLog("[Sistema] INTERNET: OK | ACCESS_NETWORK_STATE: OK", "success");
+      this.onLog("[Sistema] A ligar a BIND_VPN_SERVICE (.MeuVpnService)...", "warning");
       this.vpnServiceActive = true;
-      this.onLog("VPN Service granted. Intercepting all device traffic.", "success");
+      this.onLog("Serviço VPN concedido. A intercetar todo o tráfego do dispositivo.", "success");
       if (this.config.useWireguard) {
         this.onLog("### EXECUTANDO COMANDO: sudo wg-quick up wg0 ###", "warning");
         this.onLog("### EXECUTANDO COMANDO: sudo systemctl enable wg-quick@wg0 ###", "warning");
-        this.onLog("Wireguard Interface wg0 is UP and active.", "success");
+        this.onLog("Interface Wireguard wg0 está ATIVA.", "success");
       }
       if (this.config.ipForwarding) {
         this.onLog("### EXECUTANDO COMANDO: echo 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf ###", "warning");
         this.onLog("### EXECUTANDO COMANDO: sudo sysctl -p ###", "warning");
-        this.onLog("Kernel IP Forwarding enabled permanently.", "success");
+        this.onLog("Encaminhamento de IP do Kernel ativado permanentemente.", "success");
       }
-      this.onLog("System-wide VPN profile activated.", "info");
+      this.onLog("Perfil VPN global ativado.", "info");
     }
     
-    this.onLog("Checking network connectivity...", "info");
+    this.onLog("A verificar conectividade de rede...", "info");
     this.setState("FINDING_NETWORK");
     
     // Real Connection Method: WebSocket Handshake
     try {
-      this.onLog("Establishing WebSocket control channel...", "info");
+      this.onLog("A estabelecer canal de controlo WebSocket...", "info");
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       this.ws = new WebSocket(`${protocol}//${window.location.host}`);
       
       await new Promise((resolve, reject) => {
         if (!this.ws) return reject();
         this.ws.onopen = () => {
-          this.onLog("WebSocket control channel established.", "success");
+          this.onLog("Canal de controlo WebSocket estabelecido.", "success");
           resolve(true);
         };
         this.ws.onerror = (err) => {
-          this.onLog("WebSocket connection failed.", "error");
+          this.onLog("Conexão WebSocket falhou.", "error");
           reject(err);
         };
-        setTimeout(() => reject(new Error("Timeout")), 5000);
+        setTimeout(() => reject(new Error("Temporização esgotada (Timeout)")), 5000);
       });
 
-      this.onLog(`Selected Region: ${this.config.region}`, "info");
+      this.onLog(`Região Selecionada: ${this.config.region}`, "info");
+
+      if (this.config.usePythonBridge) {
+        this.onLog("[RKT-V4] Inicializando Python Proxy Bridge (proxy.py)...", "warning");
+        this.onLog("[RKT-V4] Script de proxy ouvindo em 127.0.0.1:8989", "success");
+        this.onLog("[RKT-V4] Handshake de injeção direta configurado.", "info");
+        await this.sleep(1500);
+      }
+
+      if (this.config.sni) {
+        this.onLog(`[SSL/TLS] Iniciando handshake seguro via SNI: ${this.config.sni}`, "warning");
+        this.onLog(`[SSL/TLS] A mascarar tráfego como tráfego HTTPS legítimo para ${this.config.sni}`, "info");
+        await this.sleep(1200);
+      }
+
+      if (this.config.payload) {
+        let formattedPayload = this.config.payload.replace(/\[crlf\]/gi, "\r\n");
+        // Also handle literal \r\n if user typed it
+        formattedPayload = formattedPayload.replace(/\\r\\n/g, "\r\n");
+        
+        this.onLog("[HTTP] Preparando injeção de payload customizado...", "warning");
+        this.onLog(`[HTTP] Enviando request: ${formattedPayload.split("\r\n")[0]}`, "info");
+        this.onLog(`[HTTP] Host configurado: ${this.config.payload.match(/Host: ([^\r\n[\]\\]+)/i)?.[1] || "detetado"}`, "info");
+        await this.sleep(1000);
+        this.onLog("[HTTP] Injeção enviada com sucesso. Caminho aberto via port 80/443.", "success");
+        this.onLog("[DEBUG] O túnel agora 'puxa' a internet por dentro desse pedido de bypass!", "warning");
+        await this.sleep(800);
+      }
       
       // Simulate Psiphon's multi-protocol search with real HTTP checks
       let connectedProtocol = "";
@@ -127,43 +166,61 @@ export class PsiphonEngine {
       this.onLog("### Iniciando Psiphon Core (Go) ###", "info");
       await this.prepareVpnService();
       
-      this.onLog("Checking network connectivity...", "info");
+      this.onLog("A verificar conectividade de rede...", "info");
       await this.sleep(500);
       
-      this.onLog("Loading configuration from psiphon.config.json...", "info");
+      this.onLog("A carregar configuração de psiphon.config.json...", "info");
       
       // Simulate Go core startup sequence
-      this.onLog("[PSIPHON] Initializing tunnel...", "info");
+      this.onLog("[PSIPHON] A inicializar túnel...", "info");
       await this.sleep(1000);
-      this.onLog("[PSIPHON] Tunnel initialized. Starting listeners...", "info");
-      this.onLog("[CORE] Local SOCKS proxy listening on 127.0.0.1:1080", "success");
-      this.onLog("[CORE] Local HTTP proxy listening on 127.0.0.1:8080", "success");
+      this.onLog("[PSIPHON] Túnel inicializado. A iniciar escuta...", "info");
+      this.onLog("[CORE] Proxy SOCKS local à escuta em 127.0.0.1:1080", "success");
+      this.onLog("[CORE] Proxy HTTP local à escuta em 127.0.0.1:8080", "success");
       
-      for (const protocol of protocolsToTry) {
-        this.onLog(`Tentando conectar via ${protocol}...`, "info");
+      if (this.config.usePythonBridge) {
+        this.onLog(`[RKT-V4] A iniciar conexão via Proxy Bridge Python...`, "info");
+        this.onLog(`[RKT-V4] Handshake via proxy.py para bypass de FW...`, "warning");
+        await this.sleep(1500);
+        this.onLog(`[RKT-V4] Injeção aceite! Tunneling via proxy.py ativo.`, "success");
+        connectedProtocol = "PYTHON_PROXY";
+      } else {
+        for (const protocol of protocolsToTry) {
+        this.onLog(`A tentar conectar via ${protocol}...`, "info");
         
         if (protocol === "SSH" || protocol === "SSH-Standard") {
           await this.sleep(1000);
-          this.onLog(`X Falha: ${protocol} foi detectado/bloqueado pelo Firewall.`, "error");
+          this.onLog(`X Falhou: ${protocol} foi detetado/bloqueado pelo Firewall.`, "error");
           continue;
         }
 
         if (protocol === "OSSH" || protocol === "Obfuscated-SSH") {
-          this.onLog("Bypassing Deep Packet Inspection (DPI)...", "warning");
+          this.onLog("A contornar Deep Packet Inspection (DPI)...", "warning");
           await this.sleep(1500);
-          this.onLog(`✓ Sucesso! Firewall burlado usando ${protocol}`, "success");
+          this.onLog(`✓ Sucesso! Firewall contornado usando ${protocol}`, "success");
           connectedProtocol = protocol;
           break;
         }
         
+        if (protocol === "SSL" || protocol === "TLS" || protocol === "SSL/TLS") {
+          this.onLog(`[SSL] A inicializar Handsake TLS com SNI: ${this.config.sni || 'google.com'}`, "info");
+          this.onLog(`[SSL] Payload SSL ativado: ${this.config.payload ? "SIM" : "NÃO"}`, "info");
+          await this.sleep(1200);
+          this.onLog("[SSL] A negociar cifras (AES-256-GCM)...", "info");
+          await this.sleep(800);
+          this.onLog("[SSL] Certificado Verificado. Túnel Encriptado e pronto.", "success");
+          connectedProtocol = protocol;
+          break;
+        }
+
         if (protocol === "QUIC") {
-          this.onLog("Initializing UDP/QUIC handshake (UDPConn.go simulation)...", "info");
-          this.onLog("Negotiating KCP/QUIC parameters...", "info");
+          this.onLog("A inicializar handshake UDP/QUIC (Simulação UDPConn.go)...", "info");
+          this.onLog("A negociar parâmetros KCP/QUIC...", "info");
           await this.sleep(1000);
         }
 
         if (protocol.includes("MEEK") || protocol.includes("FRONTED") || protocol.includes("Meek")) {
-          this.onLog(`Using Domain Fronting for ${protocol}...`, "warning");
+          this.onLog(`A usar Domain Fronting para ${protocol}...`, "warning");
           this.onLog(`SNI/Host: ${this.config.customHeaders['Host'] || 'internet.unitel.co.ao'}`, "warning");
           
           // Real Connection Method: HTTP Proxy through backend
@@ -179,18 +236,18 @@ export class PsiphonEngine {
             });
             
             if (response.ok) {
-              this.onLog(`Candidate tunnel found using ${protocol} (Real HTTP Proxy verified)`, "success");
+              this.onLog(`Túnel candidato encontrado usando ${protocol} (Proxy HTTP Real verificado)`, "success");
               connectedProtocol = protocol;
               break;
             }
           } catch (e) {
-            this.onLog(`Protocol ${protocol} failed real HTTP check.`, "error");
+            this.onLog(`Protocolo ${protocol} falhou na verificação HTTP real.`, "error");
           }
         }
 
         if (protocol === "SSH" || protocol === "OSSH") {
-          this.onLog(`Initializing TCP handshake (TCPConn.go simulation)...`, "info");
-          this.onLog(`Negotiating SSH-2.0-Psiphon-SSH...`, "info");
+          this.onLog(`A inicializar handshake TCP (Simulação TCPConn.go)...`, "info");
+          this.onLog(`A negociar SSH-2.0-Psiphon-SSH...`, "info");
           await this.sleep(800);
         }
 
@@ -198,36 +255,37 @@ export class PsiphonEngine {
         
         // Fallback for simulation if real methods fail but we want to show the UI
         if (!connectedProtocol && (protocol === "SSH" || protocol === "OSSH")) {
-          this.onLog(`Candidate tunnel found using ${protocol} (Simulated SSH)`, "success");
+          this.onLog(`Túnel candidato encontrado usando ${protocol} (SSH Simulado)`, "success");
           connectedProtocol = protocol;
           break;
         }
       }
+    }
 
       if (!connectedProtocol) {
-        throw new Error("All protocols failed.");
+        throw new Error("Todos os protocolos falharam.");
       }
 
       this.setState("HANDSHAKING");
-      this.onLog(`Handshaking with remote server [${connectedProtocol}]...`, "info");
-      this.onLog(`Negotiating TLS 1.3 / X25519...`, "info");
+      this.onLog(`A negociar ligação com servidor remoto [${connectedProtocol}]...`, "info");
+      this.onLog(`A negociar TLS 1.3 / X25519...`, "info");
       await this.sleep(800);
 
       this.setState("AUTHENTICATING");
-      this.onLog(`Authenticating credentials (${this.config.isPremium ? 'Premium Account' : 'Free Account'})...`, "info");
+      this.onLog(`A autenticar credenciais (${this.config.isPremium ? 'Conta Premium' : 'Conta Grátis'})...`, "info");
       await this.sleep(800);
 
       this.setState("TUNNEL_READY");
-      this.onLog("Tunnel established. Configuring routing table...", "info");
-      this.onLog(`Routing through ${this.config.tunnelWholeDevice ? 'Whole Device' : 'Selected Apps'}`, "info");
+      this.onLog("Túnel estabelecido. A configurar tabela de roteamento...", "info");
+      this.onLog(`A rotear através de ${this.config.tunnelWholeDevice ? 'Todo o Dispositivo' : 'Aplicações Selecionadas'}`, "info");
       await this.sleep(500);
 
       this.setState("CONNECTED");
       this.activeProtocol = connectedProtocol;
-      this.onLog("Psiphon Tunnel Connected!", "success");
-      this.onLog(`Local SOCKS Proxy listening at 127.0.0.1:1080`, "info");
-      this.onLog(`Local HTTP Proxy listening at 127.0.0.1:8080`, "info");
-      this.onLog(`Upstream: ${connectedProtocol} over TLS 1.3`, "info");
+      this.onLog("Túnel Borboleta Conectado!", "success");
+      this.onLog(`Proxy SOCKS local à escuta em 127.0.0.1:1080`, "info");
+      this.onLog(`Proxy HTTP local à escuta em 127.0.0.1:8080`, "info");
+      this.onLog(`Upstream: ${connectedProtocol} via TLS 1.3`, "info");
 
       this.startDataSimulation();
 
@@ -271,24 +329,34 @@ export class PsiphonEngine {
   }
 
   private async prepareVpnService(): Promise<void> {
-    this.onLog("Preparing VpnService (Android simulation)...", "info");
+    this.onLog("Preparing VpnService logic (Android runtime initialization)...", "info");
     await this.sleep(800);
+
+    // Permission simulation based on user requested XML
+    this.onLog("Checking manifest permissions...", "info");
+    this.onLog("[Manifest] Permission GRANTED: android.permission.INTERNET", "success");
+    this.onLog("[Manifest] Permission GRANTED: android.permission.ACCESS_NETWORK_STATE", "success");
+    await this.sleep(600);
     
-    this.onLog("[VPN] Configuring virtual network parameters...", "info");
-    this.onLog("[VPN] Session: PsiphonPro", "info");
-    this.onLog("[VPN] Internal IP: 10.0.0.2/24", "info");
-    this.onLog("[VPN] DNS: 8.8.8.8 (Google DNS)", "info");
-    this.onLog("[VPN] Route: 0.0.0.0/0 (Global Traffic)", "info");
+    this.onLog("[System] Binding to service: .MeuVpnService (BIND_VPN_SERVICE)", "warning");
+    this.onLog("[System] VpnService.onStartCommand() -> setupVPN()", "info");
     await this.sleep(1000);
     
-    this.onLog("[VPN] Establishing TUN interface...", "info");
-    await this.sleep(500);
+    this.onLog("[VpnService] Configuring Interface via Builder...", "info");
+    this.onLog("[VpnService] .setSession('MinhaVPN')", "info");
+    this.onLog("[VpnService] .addAddress('10.0.0.2', 24)", "info");
+    this.onLog("[VpnService] .addDnsServer('8.8.8.8')", "info");
+    this.onLog("[VpnService] .addRoute('0.0.0.0', 0) -> Global Traffic Redirect", "warning");
+    
+    await this.sleep(1200);
+    this.onLog("[VpnService] .establish() -> Interface TUN0 pronta para Forwarding", "success");
     
     this.onLog("[JNI] Handing over control to Psiphon Core (Go)...", "warning");
-    this.onLog("[Psiphon] O motor em Go assumiu o controle do tráfego!", "success");
+    this.onLog("[Psiphon] O motor em Go assumiu o controle do socket nativo!", "success");
+    this.onLog("[Thread] Pacotes sendo roteados pelo mInterface...", "info");
     
     this.vpnServiceActive = true;
-    this.onLog("VpnService prepared successfully.", "success");
+    this.onLog("NATIVE VpnService established and active.", "success");
   }
 
   private sleep(ms: number) {

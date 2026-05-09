@@ -29,22 +29,48 @@ db.exec(`
     host TEXT,
     port INTEGER,
     type TEXT,
+    sni TEXT,
+    is_global INTEGER DEFAULT 0,
     status TEXT DEFAULT 'online'
   );
+
+  CREATE TABLE IF NOT EXISTS app_config (
+    id TEXT PRIMARY KEY,
+    version TEXT,
+    changelog TEXT,
+    announcement TEXT,
+    update_available INTEGER DEFAULT 0
+  );
+
+  -- Add is_global if missing
+  BEGIN;
+  SELECT CASE 
+    WHEN NOT EXISTS (SELECT 1 FROM pragma_table_info('servers') WHERE name = 'is_global') 
+    THEN 'ALTER TABLE servers ADD COLUMN is_global INTEGER DEFAULT 0' 
+    ELSE 'SELECT 1' 
+  END AS cmd;
+  COMMIT;
 `);
 
+// Seed initial config
+const configCount = db.prepare("SELECT COUNT(*) as count FROM app_config").get() as any;
+if (configCount.count === 0) {
+  db.prepare("INSERT INTO app_config (id, version, changelog, announcement) VALUES (?, ?, ?, ?)")
+    .run("main", "4.3.0", "Túnel WireGuard nativo (Project VPN), bypass SSH+SSL SNI estabilizado e interface v4.3.0 premium.", "Sistema Borboleta v4.3 ONLINE | Servidores de Angola Otimizados.");
+}
+
 // Seed initial servers if table is empty
-const serverCount = db.prepare("SELECT COUNT(*) as count FROM servers").get() as any;
-if (serverCount.count === 0) {
-  const initialServers = [
-    { id: "ao-01", name: "Angola - Luanda 01", host: "197.149.150.1", port: 443, type: "SSH/MEEK" },
-    { id: "ao-02", name: "Angola - Unitel Core", host: "internet.unitel.co.ao", port: 80, type: "HTTP/OSSH" },
-    { id: "us-01", name: "USA - New York", host: "104.21.45.12", port: 443, type: "QUIC" },
-  ];
+const globalServerCount = db.prepare("SELECT COUNT(*) as count FROM servers WHERE is_global = 1").get() as any;
+  if (globalServerCount.count === 0) {
+    const initialServers = [
+      { id: "ao-01", name: "Angola - Luanda 01", host: "197.149.150.1", port: 443, type: "SSH/MEEK", sni: "m.google.com" },
+      { id: "ao-02", name: "Unitel - Core Proxy", host: "internet.unitel.co.ao", port: 80, type: "HTTP/OSSH", sni: "unitel.ao" },
+      { id: "ao-03", name: "Africell - Fiber Bypass", host: "api.africell.ao", port: 443, type: "TLS", sni: "africell.ao" },
+    ];
   
-  const insertServer = db.prepare("INSERT INTO servers (id, name, host, port, type, status) VALUES (?, ?, ?, ?, ?, 'online')");
+  const insertServer = db.prepare("INSERT INTO servers (id, name, host, port, type, sni, is_global, status) VALUES (?, ?, ?, ?, ?, ?, 1, 'online')");
   for (const s of initialServers) {
-    insertServer.run(s.id, s.name, s.host, s.port, s.type);
+    insertServer.run(s.id, s.name, s.host, s.port, s.type, s.sni || null);
   }
 }
 
@@ -133,7 +159,7 @@ async function startServer() {
   // Admin: Upgrade to Premium
   app.post("/api/admin/upgrade", authenticate, (req: AuthRequest, res) => {
     const adminKey = req.headers["x-admin-key"];
-    if (adminKey !== "edmilson77-admin") {
+    if (adminKey !== "borboleta-admin-core") {
       return res.status(403).json({ error: "Acesso negado" });
     }
     
@@ -142,37 +168,114 @@ async function startServer() {
     res.json({ success: true, message: "Utilizador atualizado para Premium" });
   });
 
-  // API: Get Cloud Servers
-  app.get("/api/servers", (req, res) => {
-    const servers = db.prepare("SELECT * FROM servers").all();
-    res.json(servers);
-  });
-
-  // API: Admin Add Server
-  app.post("/api/admin/add-server", (req, res) => {
+  // API: Update Global App Config
+  app.post("/api/admin/config", authenticate, (req: AuthRequest, res) => {
     const adminKey = req.headers["x-admin-key"];
-    if (adminKey !== "edmilson77-admin") {
+    if (adminKey !== "borboleta-admin-core") {
       return res.status(403).json({ error: "Acesso negado" });
     }
     
-    const { name, host, port, type } = req.body;
-    const id = `srv-${Math.random().toString(36).substr(2, 9)}`;
+    const { version, changelog, announcement, update_available } = req.body;
+    try {
+      db.prepare("UPDATE app_config SET version = ?, changelog = ?, announcement = ?, update_available = ? WHERE id = 'main'")
+        .run(version, changelog, announcement, update_available ? 1 : 0);
+      res.json({ success: true, message: "Configuração global atualizada" });
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao atualizar configuração" });
+    }
+  });
+
+  // API: Get Global App Config
+  app.get("/api/config", (req, res) => {
+    try {
+      const config = db.prepare("SELECT * FROM app_config WHERE id = 'main'").get();
+      if (!config) {
+        return res.json({
+          version: "4.3.0",
+          changelog: "Sistema Borboleta estável.",
+          announcement: "Sistema Borboleta v4.3 ONLINE",
+          update_available: 0
+        });
+      }
+      res.json(config);
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao buscar configuração" });
+    }
+  });
+
+  // API: Get Posts (for Android synchronization)
+  app.get("/api/posts", (req, res) => {
+    const posts = [
+      { id: 1, titulo: "Bem-vindo à Borboleta VPN", conteudo: "Obrigado por escolher a Borboleta VPN. Fique seguro online!" },
+      { id: 2, titulo: "Nova Atualização v4.3", conteudo: "Implementamos melhorias no túnel WireGuard e suporte SSH Key-auth." },
+      { id: 3, titulo: "Dica de Segurança", conteudo: "Use sempre servidores oficiais da Unitel para melhor latência em Angola." }
+    ];
+    res.json(posts);
+  });
+
+  // API: Admin Add Global Server
+  app.post("/api/admin/add-server", authenticate, (req: AuthRequest, res) => {
+    const adminKey = req.headers["x-admin-key"];
+    if (adminKey !== "borboleta-admin-core") {
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+    
+    const { name, host, port, type, sni } = req.body;
+    const id = `global-srv-${Math.random().toString(36).substr(2, 9)}`;
     
     try {
-      db.prepare("INSERT INTO servers (id, name, host, port, type) VALUES (?, ?, ?, ?, ?)")
-        .run(id, name, host, port, type);
+      db.prepare("INSERT INTO servers (id, name, host, port, type, sni, is_global) VALUES (?, ?, ?, ?, ?, ?, 1)")
+        .run(id, name, host, port, type, sni || null);
       
-      const newServer = { id, name, host, port, type, status: "online" };
-      res.json({ success: true, message: "Servidor adicionado globalmente", server: newServer });
+      const newServer = { id, name, host, port, type, sni, is_global: 1, status: "online" };
+      res.json({ success: true, message: "Servidor global adicionado", server: newServer });
     } catch (err) {
       res.status(500).json({ error: "Erro ao adicionar servidor no banco de dados" });
+    }
+  });
+
+  // API: Get Servers (sorted by global first)
+  app.get("/api/servers", (req, res) => {
+    const servers = db.prepare("SELECT * FROM servers ORDER BY is_global DESC").all();
+    res.json(servers);
+  });
+
+  // API: User Add Server
+  app.post("/api/servers", (req, res) => {
+    const { name, host, port, type, sni } = req.body;
+    if (!name || !port || !type) {
+      return res.status(400).json({ error: "Nome, Porta e Tipo são obrigatórios" });
+    }
+    
+    const id = `user-srv-${Math.random().toString(36).substr(2, 9)}`;
+    const finalHost = host || sni || "127.0.0.1";
+    
+    try {
+      db.prepare("INSERT INTO servers (id, name, host, port, type, sni, is_global) VALUES (?, ?, ?, ?, ?, ?, 0)")
+        .run(id, name, finalHost, port, type, sni || null);
+      
+      const newServer = { id, name, host: finalHost, port, type, sni, is_global: 0, status: "online" };
+      res.json({ success: true, message: "Servidor adicionado com sucesso", server: newServer });
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao adicionar servidor" });
+    }
+  });
+
+  // API: User Delete Server
+  app.delete("/api/servers/:id", (req, res) => {
+    const { id } = req.params;
+    try {
+      db.prepare("DELETE FROM servers WHERE id = ?").run(id);
+      res.json({ success: true, message: "Servidor removido" });
+    } catch (err) {
+      res.status(500).json({ error: "Erro ao remover servidor" });
     }
   });
 
   // API: Admin Update Servers (Simple protection with a header for demo)
   app.post("/api/admin/servers", (req, res) => {
     const adminKey = req.headers["x-admin-key"];
-    if (adminKey !== "edmilson77-admin") {
+    if (adminKey !== "borboleta-admin-core") {
       return res.status(403).json({ error: "Acesso negado" });
     }
     
@@ -180,11 +283,11 @@ async function startServer() {
     
     try {
       db.prepare("DELETE FROM servers").run();
-      const insertServer = db.prepare("INSERT INTO servers (id, name, host, port, type, status) VALUES (?, ?, ?, ?, ?, ?)");
+      const insertServer = db.prepare("INSERT INTO servers (id, name, host, port, type, sni, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
       
       const transaction = db.transaction((serverList) => {
         for (const s of serverList) {
-          insertServer.run(s.id, s.name, s.host, s.port, s.type, s.status || 'online');
+          insertServer.run(s.id, s.name, s.host, s.port, s.type, s.sni || null, s.status || 'online');
         }
       });
       
@@ -195,12 +298,13 @@ async function startServer() {
     }
   });
 
-  // API: Version Check
+  // API: Version Check (Legacy - kept for compatibility)
   app.get("/api/version", (req, res) => {
+    const config = db.prepare("SELECT * FROM app_config WHERE id = 'main'").get() as any;
     res.json({ 
-      version: "4.2.1", 
-      changelog: "Estabilidade melhorada, novos servidores em Angola e otimização de bateria.",
-      date: "2024-03-10"
+      version: config.version, 
+      changelog: config.changelog,
+      date: new Date().toISOString()
     });
   });
 
@@ -243,13 +347,20 @@ async function startServer() {
           const { host, port, username, password, privateKey } = payload.config;
           sshClient = new Client();
           
+          const connectionConfig: any = { host, port, username };
+          if (privateKey && privateKey.trim()) {
+            connectionConfig.privateKey = privateKey;
+          } else if (password) {
+            connectionConfig.password = password;
+          }
+
           sshClient.on("ready", () => {
             ws.send(JSON.stringify({ type: "SSH_READY", message: "SSH Tunnel Established" }));
             console.log("[TunnelCore] SSH Ready");
           }).on("error", (err) => {
             ws.send(JSON.stringify({ type: "ERROR", message: err.message }));
             console.error("[TunnelCore] SSH Error:", err.message);
-          }).connect({ host, port, username, password, privateKey });
+          }).connect(connectionConfig);
         }
 
         if (payload.type === "SSH_SHELL" && sshClient) {
