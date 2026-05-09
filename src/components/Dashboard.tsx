@@ -760,7 +760,7 @@ export default function Dashboard() {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-6 relative">
+        <div className="flex-1 overflow-y-auto p-6 pb-24 relative">
           {/* Central Admin Announcement */}
           {appConfig.announcement && (
             <motion.div
